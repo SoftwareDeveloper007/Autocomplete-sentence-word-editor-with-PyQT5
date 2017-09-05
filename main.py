@@ -93,7 +93,7 @@ class mainGUI(QMainWindow):
             keywordPatterns.remove('')
 
         for i, wd in enumerate(keywordPatterns):
-            keywordPatterns[i] = "\\b" + keywordPatterns[i] + "\\b"
+            keywordPatterns[i] = "\\b" + keywordPatterns[i].upper() + "\\b"
 
         self.highlighter.updateKeywordPatterns(keywordPatterns)
 
@@ -165,10 +165,6 @@ class TextEdit(QTextEdit):
             tc.insertText(completion[-extra:])
             self.setTextCursor(tc)
 
-        tc1 = self.textCursor()
-        tc1.movePosition(QTextCursor.StartOfWord)
-        tc1.movePosition(QTextCursor.EndOfWord)
-        tc1.selectedText().setFontWeight(QFont.Bold)
 
     def textUnderCursor(self):
         tc = self.textCursor()
@@ -183,40 +179,43 @@ class TextEdit(QTextEdit):
         super(TextEdit, self).focusInEvent(e)
 
     def keyPressEvent(self, e):
-        if self._completer is not None and self._completer.popup().isVisible():
-            # The following keys are forwarded by the completer to the widget.
-            if e.key() in (Qt.Key_Enter, Qt.Key_Return, Qt.Key_Escape, Qt.Key_Tab, Qt.Key_Backtab):
-                e.ignore()
-                # Let the completer do default behavior.
+        try:
+            if self._completer is not None and self._completer.popup().isVisible():
+                # The following keys are forwarded by the completer to the widget.
+                if e.key() in (Qt.Key_Enter, Qt.Key_Return, Qt.Key_Escape, Qt.Key_Tab, Qt.Key_Backtab):
+                    e.ignore()
+                    # Let the completer do default behavior.
+                    return
+
+            #isShortcut = ((e.modifiers() & Qt.ControlModifier) != 0 and e.key() == Qt.Key_Escape)
+            isShortcut = False
+            if self._completer is None or not isShortcut:
+                # Do not process the shortcut when we have a completer.
+                super(TextEdit, self).keyPressEvent(e)
+
+            ctrlOrShift = e.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)
+            if self._completer is None or (ctrlOrShift and len(e.text()) == 0):
                 return
 
-        isShortcut = ((e.modifiers() & Qt.ControlModifier) != 0 and e.key() == Qt.Key_0)
-        if self._completer is None or not isShortcut:
-            # Do not process the shortcut when we have a completer.
-            super(TextEdit, self).keyPressEvent(e)
+            eow = "~!@#$%^&*()_+{}|:\"<>?,./;'[]\\-="
+            hasModifier = (e.modifiers() != Qt.NoModifier) and not ctrlOrShift
+            completionPrefix = self.textUnderCursor()
 
-        ctrlOrShift = e.modifiers() & (Qt.ControlModifier | Qt.ShiftModifier)
-        if self._completer is None or (ctrlOrShift and len(e.text()) == 0):
-            return
+            if not isShortcut and (hasModifier or len(e.text()) == 0 or len(completionPrefix) < 2 or e.text()[-1] in eow):
+                self._completer.popup().hide()
+                return
 
-        eow = "~!@#$%^&*()_+{}|:\"<>?,./;'[]\\-="
-        hasModifier = (e.modifiers() != Qt.NoModifier) and not ctrlOrShift
-        completionPrefix = self.textUnderCursor()
+            if completionPrefix != self._completer.completionPrefix():
+                self._completer.setCompletionPrefix(completionPrefix)
+                self._completer.popup().setCurrentIndex(
+                    self._completer.completionModel().index(0, 0))
 
-        if not isShortcut and (hasModifier or len(e.text()) == 0 or len(completionPrefix) < 2 or e.text()[-1] in eow):
-            self._completer.popup().hide()
-            return
-
-        if completionPrefix != self._completer.completionPrefix():
-            self._completer.setCompletionPrefix(completionPrefix)
-            self._completer.popup().setCurrentIndex(
-                self._completer.completionModel().index(0, 0))
-
-        cr = self.cursorRect()
-        cr.setWidth(self._completer.popup().sizeHintForColumn(
-            0) + self._completer.popup().verticalScrollBar().sizeHint().width())
-        self._completer.complete(cr)
-
+            cr = self.cursorRect()
+            cr.setWidth(self._completer.popup().sizeHintForColumn(
+                0) + self._completer.popup().verticalScrollBar().sizeHint().width())
+            self._completer.complete(cr)
+        except ValueError as e:
+            print(e)
 
 class Highlighter(QSyntaxHighlighter):
     def __init__(self, keywordPatterns, parent=None):
